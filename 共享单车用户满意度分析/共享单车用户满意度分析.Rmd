@@ -1,0 +1,362 @@
+---
+title: "共享单车用户满意度分析"
+author: "Mr.Li"
+date: "2/14/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+### 1.获取随机调研的用户数据以及打分情况数据
+```{r}
+#更改工作目录
+setwd('C:\\Users\\li\\Desktop\\r workfile')
+getwd()
+#读取数据
+custo.survey.data <- read.csv("customer survey data.csv")
+survey.score.data <- read.csv("survey score data.csv")
+#查看数据信息
+View(custo.survey.data)
+View(survey.score.data)
+#查看数据结构
+str(custo.survey.data)
+str(survey.score.data)
+#查看数据大概情况
+summary(custo.survey.data)
+summary(survey.score.data)
+
+```
+### 2.对获得的数据进行清洗去除缺失值和异常值等
+```{r}
+#数据清洗观察数据
+summary(custo.survey.data)
+#以上得出顾客基本信息表无缺失值，异常值等情况
+summary(survey.score.data)
+#得出分数列有两个缺失值
+str(custo.survey.data)
+custo.survey.data$采访时间 <- as.POSIXct(custo.survey.data$采访时间) #将采访时间转化为时间数据结构形式便于后续操作
+
+survey.score.data[is.na(survey.score.data$分数),"分数"] <- mean(survey.score.data$分数,na.rm = TRUE) #用分数列的平均值补上缺失值
+# head(survey.score.data)
+
+
+```
+### 3.数据转换，对两个表格进行合并，添加必要的列
+
+```{r}
+library(dplyr)#导入数据处理包
+new.cus.data <- custo.survey.data %>%
+  left_join(survey.score.data,by = "ID") %>%#合并表格
+  mutate(采访时间=strftime(custo.survey.data$采访时间,"%H")) %>%
+  mutate(分数排名 = as.numeric(rank(分数,ties.method = "min")))                    #因为采访时间是同一天，所以提取小时数，忽略几分几秒的影响 
+# new.cus.data
+str(new.cus.data)#查看更改的类型为数字类型
+
+```
+
+### 4.得到分析数据，进行数据探索判断不同数据分布规律以及数据间的关系，对数据进行探索
+### 针对数据提出问题
+* 年龄的分布情况
+* 分数的分布情况
+* 对照组和实验组的分数差异
+* 不同城区的分数分布差异
+* 采访时间与分数的关系
+* 月收入与分数的关系
+* 年龄与分数的关系
+* 不同城区各年龄段所打分数的差异
+
+#### 4.1年龄的分布情况
+```{r}
+
+#查看年龄的分布情况使用直方图以及基本统计
+library(ggplot2)
+ggplot(data = new.cus.data,aes(年龄)) + geom_histogram(binwidth = 1) + labs(title = '年龄的分布情况') + theme(plot.title = element_text(hjust = 0.5))
+mean(new.cus.data$年龄)
+sd(new.cus.data$年龄)
+quantile(new.cus.data$年龄)
+
+```
+
+
+得出基本结论：此次调查的平均年龄为27岁，方差为5.8,其中年龄分布在25到30岁之间的人数组最多
+
+#### 4.2分数的分布情况
+```{r}
+#查看分数的分布情况使用直方图以及基本统计
+ggplot(data = new.cus.data,aes(分数)) + geom_histogram(binwidth = 1) +labs(title = "分数的分布情况")+theme(plot.title = element_text(hjust = 0.5))
+mean(new.cus.data$分数)
+sd(new.cus.data$分数)
+quantile(new.cus.data$分数)
+
+```
+得出基本结论：此次调查打分，平均分为5.45，标准差为2.85，其中分数分布在2.5到5.0之间以及7.5到10之间的分布最多
+
+#### 4.3实验组和对照组分数差异
+```{r}
+#判断实验组和对照组分数差异
+g1<-ggplot(data=new.cus.data,aes(x=组别,y=分数))+
+   geom_dotplot(binaxis="y",stackdir="center",dotsize = 0.7)+ggtitle(paste( "受访用户所在城区与所打分数的关系")) + theme(plot.title = element_text(hjust = 0.5))
+g1
+
+g2 <- ggplot(data=new.cus.data,aes(组别,分数)) +geom_boxplot() + theme(plot.title = element_text(hjust = 0.5)) + labs(title = "受访用户所在城区与所打分数的关系")
+
+g2
+
+```
+
+由此可见，对照组的总体分数要高于实验组的分数，下面看下两组的平均分
+```{r}
+
+s1<-new.cus.data[new.cus.data$组别 == "实验组", "分数"]
+mean(s1)
+s2<-new.cus.data[new.cus.data$组别 == "对照组", "分数"]
+mean(s2)
+```
+由此可得，对照组的平均分数要高于实验组
+
+
+#### 4.4受访用户在不同城区的分数差异
+```{r}
+#查看对照组和实验组的分数差异
+#设定new.cus.data为画图的数据，设定xy轴分别为城区、分数
+g1<-ggplot(data=new.cus.data,aes(x=城区,y=分数))+
+   geom_dotplot(binaxis="y",stackdir="center",dotsize = 0.7)+ #dotsize设置dot的大小，默认为1
+   ggtitle(paste( "受访用户所在城区与所打分数的关系"))+ #加标题
+   #设置title居中呈现
+   theme(plot.title = element_text(hjust = 0.5))
+g2<-ggplot(new.cus.data, aes(城区,分数))+
+   geom_boxplot()+
+   ggtitle(paste( "不同城区的受访用户所给分数的平均分对比"))+
+   #设置title居中呈现
+   theme(plot.title = element_text(hjust = 0.5))
+g1
+g2
+
+# #加载Rmisc包
+# library(Rmisc)
+# #将g1 g2两个图并排展示
+# multiplot(g1,g2,cols=2)
+# 由于并排显示的图像较为拥挤故竖排显示图像
+```
+
+根据图表，海淀区用户的打分情况可能比其他城区好，下面求各个城区的平均分看一下
+
+```{r }
+#求出各个城区的平均分
+average.data <- new.cus.data %>%
+  group_by(城区) %>%
+dplyr::  summarise(平均分数 = mean(分数))
+average.data
+
+```
+
+由此可以看出四个城区的用户中，海淀区用户所给分数的平均分相对高些，说明海淀区用户对共享单车的满意度更高，可能跟海淀区高校多、互联网公司多、单车数量多等因素有关
+
+#### 4.5采访时间与分数的关系
+
+```{r}
+#判断采访时间与所打分数之间是否存在关系
+ggplot(data = new.cus.data, aes(采访时间,分数)) + geom_point(alpha= 1/3) + labs(title = "采访时间与所打分数的关系") + theme(plot.title = element_text(hjust = 0.5))#设置标题居中
+
+
+```
+由此可见，用户的采访时间与所打分数并无太大的关系
+
+
+#### 4.6月收入与分数的关系
+
+```{r}
+
+ggplot(data = new.cus.data,aes(月收入,分数)) + geom_point(alpha = 1/3) +
+labs(title = "受访用户月收入与所打分数的关系") + theme(plot.title = element_text(hjust = 0.5))
+
+```
+没有发现受访用户月收入与所打分数之间的明显关系，看起来在受访用户中，
+月收入10000以下的用户多于月收入10000以上的用户
+
+#### 4.7年龄与分数的关系
+
+```{r}
+#判断年龄与所打分数的关系
+ggplot(new.cus.data,aes(年龄,分数)) + geom_point(alpha = 1/3) + labs(title = "年龄与所打分数的关系") + theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+
+整体来看，年龄高的用户给出的分数高于年龄低的用户。在30岁以下用户群体中，用户所打的分数随着用户年龄的增加也呈线性关系增长；30岁以上的用户群体中，用户所打分数不再随着年龄增加而增加，这应该与分数最高为10分有关。
+
+#### 4.8不同城区各年龄段所打分数的差异
+```{r}
+#采用热力图分离三者之间的关系
+g<-ggplot(new.cus.data,aes(x=城区,y=年龄))
+g+ geom_raster(aes(fill=分数))+
+   #默认颜色为低分深色高分浅色，调整为低分浅色高分深色
+   scale_fill_gradientn(colours=c("#FFFFFFFF","blue"))+
+   ggtitle(paste( "受访用户所在城区和受访用户年龄与所打分数三者的关系"))+
+   #设置title居中呈现
+   theme(plot.title = element_text(hjust = 0.5))
+
+
+```
+
+
+相对于城区，分数的高低更依赖于年龄的大小
+
+
+
+### 5. 分析与建模
+#### 5.1 满意分影响因素
+##### 5.1.1 决策树方法
+```{r}
+#install.packages("rpart")
+#install.packages("rpart.plot")
+#设置推荐者为分数>=9的值
+new.cus.data$推荐者 <- new.cus.data$分数 >= 9
+library(rpart)
+library(rpart.plot)
+rtree_fit<-rpart(推荐者 ~ 城区+年龄+组别,data=new.cus.data)
+rpart.plot(rtree_fit)
+```
+
+
+年龄大于29岁的海淀区用户推荐者比例最高
+
+
+##### 5.1.2 线性回归方法
+###### 步骤1：识别多重共线性对模型的干扰
+
+```{r}
+
+#install.packages("GGally")
+library(GGally)
+ggpairs(new.cus.data, columns = c("分数","组别","年龄","城区","车龄","采访时间","月收入"))
+
+
+```
+
+受访用户的年龄与车龄强相关，解决方法：去除车龄变量，保留年龄变量
+
+###### 步骤2：检查多重共线性是否依然存在
+```{r}
+
+#install.packages("car")
+#消除多重共线性之前
+lm_fit <- lm(分数 ~ 城区+年龄+组别+车龄+采访时间+月收入, data = new.cus.data)#lm()是线性回归方程
+library(car)
+vif(lm_fit)
+#消除多重共线性之后
+lm_fit <- lm(分数 ~ 城区+年龄+组别+采访时间+月收入, data = new.cus.data)#lm()是线性回归方程
+library(car)
+vif(lm_fit)
+
+
+```
+通过GVIF值可见，已消除多重共线性
+
+###### 步骤3：挑选模型输入自变量
+```{r}
+#install.packages("olsrr")
+library(olsrr)
+model <- lm(分数 ~ 城区+年龄+组别+采访时间+月收入, data = new.cus.data)
+
+k <- ols_step_all_possible(model)
+
+k <- as.data.frame(k)#为了使k能够在文档中显示故将其转化为数据框结构
+
+k
+
+#选出调整R^2最大的分组
+
+
+max.id <- k[k$adjr == max(k$adjr),"predictors"]
+max.id
+
+
+```
+根据调整R^2的大小选出最优变量的组合为 城区+年龄+组别
+
+##### 步骤4：运行线性回归模型
+
+```{r}
+
+result <- lm(分数 ~ 城区+年龄+组别, data = new.cus.data)
+summary(result)
+
+```
+
+#### 5.2 用户画像——K-Means
+##### 步骤1：
+
+```{r}
+#肘部法则用来判断聚类的K值大小
+set.seed(1)#确定随机数生成函数的初始数，可使下面kmeans的结果在不同运行过程中重现
+cost.df <- data.frame()
+for(k in 1:10){
+  kmeans.fit <- kmeans(x=scale(new.cus.data[, c("月收入","年龄")]),centers=k)#对每一个聚类数目选择k，进行k-means聚类
+  cost.df <- rbind(cost.df, cbind(k, kmeans.fit$tot.withinss))#提取聚类结果得到的“到聚类中心的举例平方和（cost）”
+}
+names(cost.df) <- c("y","n")#对两列重命名
+ggplot(cost.df, aes(y,n))+
+  geom_point()+
+  xlab("聚类数目")+
+  ylab("到聚类中心的距离平方和(Cost)")
+
+```
+选取聚类数目为5
+
+
+##### 步骤2:运行K-means模型
+```{r message=FALSE, warning=FALSE}
+set.seed(1)#确定随机数生成函数的初始数，可使下面kmeans的结果在不同运行过程中重现
+kmeans_cluster <- kmeans(scale(new.cus.data[, c("月收入","年龄")]),5)# kmeans()方差运行算法，选取聚类数目k=5
+new.cus.data$分类 <- as.factor(kmeans_cluster$cluster) #重命名生成的新标签为中文
+#画图
+library(ggplot2)
+ggplot(new.cus.data, aes(年龄,月收入,color=分类))+geom_point()
+
+```
+
+##### 步骤3:总结聚类结果
+```{r}
+## 生成用户画像的数据
+library(dplyr)
+new.cus.data %>% 
+  group_by(分类) %>%
+dplyr::summarise(平均月收入=mean(月收入), 平均分数=mean(分数))
+
+```
+
+#### 5.3 ABtest(A/B测试)
+
+在不同时期的新用户可能被收取￥99押金或免除押金，收取押金用户为实验组用户，其他用户为对照组用户。设计实验分析此次“收押金”，对用户的满意度分数有没有影响？
+
+##### 5.3.1ABtest-双样品z-检验（平均值）
+假设H0：收取押金对用户的满意度没有影响；假设H1：收取押金对用户的满意度有影响
+```{r}
+#进行双侧检验
+library(BSDA)
+s1 <- new.cus.data[new.cus.data$组别=="实验组","分数"]
+
+s2 <- new.cus.data[new.cus.data$组别=="对照组","分数"]
+
+result <- z.test(x=s1,sigma.x = sd(s1,na.rm = TRUE),y=s2,sigma.y = sd(s2,na.rm = TRUE),alternative = "two.sided")
+
+result
+
+```
+
+通过ABtest-双样品z-检验（平均值）的结果来看，p-value = 0.345 > 显著性水平0.05。因此，基于此次假设检验，我们无法拒绝原假设H0，收取押金对用户的满意度分数没有显著影响。
+
+
+##### 5.3.2ABtest-双样品z-检验（比例）
+假设H0：收取押金对用户的满意度没有影响；假设H1：收取押金对用户的满意度有影响
+```{r}
+#table函数生成透视表，查看组别vs推荐者两个变量之间的关系
+tou <- table(new.cus.data$组别,new.cus.data$推荐者)
+#双样品z-检验
+prop.test(tou, alternative="two.sided")
+
+```
+
+通过ABtest-双样品z-检验（比例）的结果来看，p-value = 0.07441 > 显著性水平0.05。基于0.05显著性水平来看，我们无法拒绝原假设H0。
+但如果按照0.1显著性水平，收取押金会对用户稍稍有一点影响，应谨慎对待。
+
